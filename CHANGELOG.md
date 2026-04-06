@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.2](https://github.com/encryptedtouhid/mssql-rest-api/compare/v0.1.1...v0.1.2) (2026-04-06)
+
+### Bug Fixes
+
+- **test:** add missing corsOrigin and listenHost to integration test config ([3455ccc](https://github.com/encryptedtouhid/mssql-rest-api/commit/3455ccc0384b30031a30b93ac414b4ea8e5f9bfd))
+
+### Documentation
+
+- add CLI usage section to README ([757a825](https://github.com/encryptedtouhid/mssql-rest-api/commit/757a825bf5f1a62bac7403e5063fa61863c19aef))
+
 ### 0.1.1 (2026-04-06)
 
 ### Features
