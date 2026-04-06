@@ -17,6 +17,8 @@ export function getTestConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     serverPort: 0, // random port
     readonly: true,
     cors: true,
+    corsOrigin: '*',
+    listenHost: '127.0.0.1',
     schemas: ['dbo', 'sales', 'hr', 'inventory', 'finance', 'content'],
     excludeTables: [],
     defaultPageSize: 100,
