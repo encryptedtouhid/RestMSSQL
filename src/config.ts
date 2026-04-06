@@ -13,8 +13,10 @@ export interface AppConfig {
   trustServerCertificate: boolean;
 
   serverPort: number;
+  listenHost: string;
   readonly: boolean;
   cors: boolean;
+  corsOrigin: string;
 
   schemas: string[];
   excludeTables: string[];
@@ -35,8 +37,10 @@ const defaults: AppConfig = {
   trustServerCertificate: false,
 
   serverPort: 3000,
+  listenHost: '127.0.0.1',
   readonly: true,
   cors: true,
+  corsOrigin: '*',
 
   schemas: ['dbo'],
   excludeTables: [],
@@ -71,7 +75,9 @@ function loadEnvConfig(): Partial<AppConfig> {
     env.serverPort = parseInt(process.env['MSSQLREST_SERVER_PORT'], 10);
   if (process.env['MSSQLREST_READONLY'])
     env.readonly = process.env['MSSQLREST_READONLY'] !== 'false';
+  if (process.env['MSSQLREST_LISTEN_HOST']) env.listenHost = process.env['MSSQLREST_LISTEN_HOST'];
   if (process.env['MSSQLREST_CORS']) env.cors = process.env['MSSQLREST_CORS'] !== 'false';
+  if (process.env['MSSQLREST_CORS_ORIGIN']) env.corsOrigin = process.env['MSSQLREST_CORS_ORIGIN'];
   if (process.env['MSSQLREST_SCHEMAS'])
     env.schemas = process.env['MSSQLREST_SCHEMAS'].split(',').map((s) => s.trim());
   if (process.env['MSSQLREST_EXCLUDE_TABLES'])
