@@ -1,0 +1,79 @@
+{
+  "name": "mssql-rest-api",
+  "version": "0.1.0",
+  "description": "Zero-code REST API server for SQL Server with OData support",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "mssql-rest-api": "dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "lint": "eslint src/ tests/",
+    "lint:fix": "eslint --fix src/ tests/",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "secretlint": "secretlint \"**/*\"",
+    "typecheck": "tsc --noEmit",
+    "prepare": "husky",
+    "docker:up": "docker compose -f docker/docker-compose.yml up -d",
+    "docker:down": "docker compose -f docker/docker-compose.yml down -v"
+  },
+  "keywords": [
+    "mssql",
+    "sql-server",
+    "rest-api",
+    "odata",
+    "auto-api",
+    "postgrest"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@fastify/cors": "^10.0.2",
+    "@fastify/swagger": "^9.4.2",
+    "@fastify/swagger-ui": "^5.2.1",
+    "commander": "^13.1.0",
+    "cosmiconfig": "^9.0.0",
+    "dotenv": "^16.4.7",
+    "fast-xml-parser": "^5.1.0",
+    "fastify": "^5.2.1",
+    "mssql": "^11.0.1",
+    "pino": "^9.6.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@secretlint/secretlint-rule-preset-recommend": "^8.4.1",
+    "@types/mssql": "^9.1.11",
+    "@types/node": "^22.12.0",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.0.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.4.3",
+    "prettier": "^3.4.2",
+    "secretlint": "^8.4.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.21.0",
+    "vitest": "^3.0.5"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

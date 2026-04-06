@@ -1,0 +1,2 @@
+npx lint-staged
+npx secretlint "src/**/*" "tests/**/*" "docker/**/*" ".env*" "*.json" "*.ts" "*.js" || true

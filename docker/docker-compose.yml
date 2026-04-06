@@ -1,0 +1,48 @@
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: 'Y'
+      MSSQL_SA_PASSWORD: 'YourStr0ngP@ssword!'
+      MSSQL_PID: 'Developer'
+    ports:
+      - '1433:1433'
+    volumes:
+      - mssql-data:/var/opt/mssql
+    healthcheck:
+      test:
+        [
+          'CMD',
+          '/opt/mssql-tools18/bin/sqlcmd',
+          '-S',
+          'localhost',
+          '-U',
+          'sa',
+          '-P',
+          'YourStr0ngP@ssword!',
+          '-C',
+          '-Q',
+          'SELECT 1',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    tmpfs:
+      - /tmp
+
+  mssql-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    depends_on:
+      mssql:
+        condition: service_healthy
+    volumes:
+      - ./init-db.sql:/init-db.sql
+      - ./seed-data.sql:/seed-data.sql
+    entrypoint: >
+      /bin/bash -c "
+        /opt/mssql-tools18/bin/sqlcmd -S mssql -U sa -P 'YourStr0ngP@ssword!' -C -i /init-db.sql &&
+        /opt/mssql-tools18/bin/sqlcmd -S mssql -U sa -P 'YourStr0ngP@ssword!' -C -i /seed-data.sql
+      "
+
+volumes:
+  mssql-data:
