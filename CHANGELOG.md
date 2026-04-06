@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.2.0](https://github.com/encryptedtouhid/mssql-rest-api/compare/v0.1.2...v0.2.0) (2026-04-06)
+
+### Features
+
+- add auto port fallback and colored CLI startup banner ([c03cf3f](https://github.com/encryptedtouhid/mssql-rest-api/commit/c03cf3f0415e5e1e45f21851f051c79eea3dca39))
+
+### Bug Fixes
+
+- replace incorrect postgrest keyword with relevant ones ([65cdaea](https://github.com/encryptedtouhid/mssql-rest-api/commit/65cdaead497e01e6e4739694cf0aad6a730b4507))
+
 ### [0.1.2](https://github.com/encryptedtouhid/mssql-rest-api/compare/v0.1.1...v0.1.2) (2026-04-06)
 
 ### Bug Fixes
