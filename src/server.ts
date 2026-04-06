@@ -1,10 +1,13 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
 import type { AppConfig } from './config.js';
 import { initPool } from './db/pool.js';
 import { introspectDatabase } from './introspection/introspector.js';
 import { registerAllRoutes } from './routes/generator.js';
 import { contentNegotiationHook } from './formatters/content-negotiation.js';
+import { formatXmlError } from './formatters/xml.js';
 import { AppError } from './utils/errors.js';
 
 export async function createServer(config: AppConfig) {
@@ -19,6 +22,20 @@ export async function createServer(config: AppConfig) {
     await app.register(cors, { origin: true });
   }
 
+  // Swagger
+  await app.register(swagger, {
+    openapi: {
+      info: {
+        title: `${config.database} API`,
+        version: '1.0.0',
+        description: `Auto-generated REST API for ${config.database} database`,
+      },
+    },
+  });
+  await app.register(swaggerUi, {
+    routePrefix: '/swagger',
+  });
+
   // Content negotiation
   app.addHook('onRequest', contentNegotiationHook);
 
@@ -26,42 +43,60 @@ export async function createServer(config: AppConfig) {
   app.setErrorHandler(
     (
       error: Error & { validation?: unknown; statusCode?: number; code?: string },
-      _request,
+      request,
       reply,
     ) => {
-      if (error instanceof AppError) {
-        void reply.status(error.statusCode).send({
-          error: {
-            code: error.code,
-            message: error.message,
-          },
-        });
-        return;
+      const statusCode =
+        error instanceof AppError ? error.statusCode : error.validation ? 400 : 500;
+      const code =
+        error instanceof AppError
+          ? error.code
+          : error.validation
+            ? 'VALIDATION_ERROR'
+            : 'INTERNAL_ERROR';
+      const message =
+        error instanceof AppError || error.validation
+          ? error.message
+          : 'An internal error occurred';
+
+      if (statusCode === 500) {
+        app.log.error(error);
       }
 
-      // Fastify validation errors
-      if (error.validation) {
-        void reply.status(400).send({
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: error.message,
-          },
-        });
-        return;
+      void reply.status(statusCode);
+
+      if (request.responseFormat === 'xml') {
+        void reply.header('Content-Type', 'application/xml; charset=utf-8');
+        return reply.send(formatXmlError(code, message));
       }
 
-      app.log.error(error);
-      void reply.status(500).send({
-        error: {
-          code: 'INTERNAL_ERROR',
-          message: 'An internal error occurred',
-        },
-      });
+      return reply.send({ error: { code, message } });
     },
   );
 
   // Initialize database
-  const pool = await initPool(config);
+  let pool;
+  try {
+    pool = await initPool(config);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('ECONNREFUSED') || message.includes('Could not connect')) {
+      throw new Error(
+        `Cannot connect to SQL Server at ${config.host}:${config.port}. Is the server running?`,
+      );
+    }
+    if (message.includes('Login failed')) {
+      throw new Error(
+        `Authentication failed for user '${config.user}' on ${config.host}:${config.port}. Check credentials.`,
+      );
+    }
+    if (message.includes('database') && message.includes('not exist')) {
+      throw new Error(
+        `Database '${config.database}' does not exist on ${config.host}:${config.port}.`,
+      );
+    }
+    throw err;
+  }
   app.log.info(`Connected to SQL Server at ${config.host}:${config.port}/${config.database}`);
 
   // Introspect schema

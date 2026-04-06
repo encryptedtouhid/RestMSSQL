@@ -9,7 +9,49 @@ import { formatJsonResponse, formatSingleJsonResponse } from '../formatters/json
 import { formatXmlResponse, formatSingleXmlResponse } from '../formatters/xml.js';
 import { setResponseHeaders } from '../formatters/content-negotiation.js';
 import { getPool } from '../db/pool.js';
-import { NotFoundError, MethodNotAllowedError, AppError } from '../utils/errors.js';
+import {
+  BadRequestError,
+  NotFoundError,
+  MethodNotAllowedError,
+  AppError,
+} from '../utils/errors.js';
+
+/**
+ * Parse PK values from route param.
+ * Single PK:    /:id        → "5"
+ * Composite PK: /:keys      → "WarehouseId=1,ProductId=2"
+ */
+function parsePkValues(table: TableInfo, raw: string): Map<string, string> {
+  const pkValues = new Map<string, string>();
+
+  if (table.primaryKey.length === 1) {
+    pkValues.set(table.primaryKey[0]!, raw);
+    return pkValues;
+  }
+
+  // Composite: "Key1=val1,Key2=val2"
+  const pairs = raw.split(',');
+  for (const pair of pairs) {
+    const eqIdx = pair.indexOf('=');
+    if (eqIdx === -1) {
+      throw new BadRequestError(
+        `Invalid composite key format. Expected: ${table.primaryKey.map((k) => `${k}=value`).join(',')}`,
+      );
+    }
+    const key = pair.substring(0, eqIdx).trim();
+    const value = pair.substring(eqIdx + 1).trim();
+    pkValues.set(key, value);
+  }
+
+  // Validate all PK columns are present
+  for (const pk of table.primaryKey) {
+    if (!pkValues.has(pk)) {
+      throw new BadRequestError(`Missing primary key column '${pk}' in composite key`);
+    }
+  }
+
+  return pkValues;
+}
 
 export function registerTableRoutes(
   app: FastifyInstance,
@@ -20,7 +62,6 @@ export function registerTableRoutes(
   const basePath =
     table.schema === 'dbo' ? `/api/${table.name}` : `/api/${table.schema}.${table.name}`;
 
-  // Also register without schema prefix for non-dbo if using full path
   const paths = table.schema === 'dbo' ? [basePath, `/api/dbo.${table.name}`] : [basePath];
 
   for (const path of paths) {
@@ -50,12 +91,10 @@ export function registerTableRoutes(
       const result = await sqlRequest.query(sql);
       let data = result.recordset as Record<string, unknown>[];
 
-      // Handle $expand
       if (odataQuery.expand) {
         data = await resolveExpand(data, table, odataQuery.expand.items, schema, config);
       }
 
-      // Handle $count
       let count: number | undefined;
       if (odataQuery.count) {
         const countQuery = buildCountQuery(table, odataQuery);
@@ -79,11 +118,10 @@ export function registerTableRoutes(
 
     // GET single row by primary key
     if (table.primaryKey.length > 0) {
-      app.get(`${path}/:id`, async (request, reply) => {
+      app.get(`${path}/:keys`, async (request, reply) => {
         const pool = getPool();
-        const { id } = request.params as { id: string };
-        const pkValues = new Map<string, string>();
-        pkValues.set(table.primaryKey[0]!, id);
+        const { keys } = request.params as { keys: string };
+        const pkValues = parsePkValues(table, keys);
 
         const { sql, parameters } = buildSingleRowQuery(table, pkValues);
         const sqlRequest = pool.request();
@@ -95,7 +133,7 @@ export function registerTableRoutes(
         const row = result.recordset[0] as Record<string, unknown> | undefined;
 
         if (!row) {
-          throw new NotFoundError(`${table.name} with id '${id}' not found`);
+          throw new NotFoundError(`${table.name} not found`);
         }
 
         const context = `${request.protocol}://${request.hostname}/api/$metadata#${table.name}/$entity`;
@@ -136,12 +174,11 @@ export function registerTableRoutes(
       });
 
       // PATCH - Partial update
-      app.patch(`${path}/:id`, async (request, reply) => {
+      app.patch(`${path}/:keys`, async (request, reply) => {
         const pool = getPool();
-        const { id } = request.params as { id: string };
+        const { keys } = request.params as { keys: string };
         const body = request.body as Record<string, unknown>;
-        const pkValues = new Map<string, string>();
-        pkValues.set(table.primaryKey[0]!, id);
+        const pkValues = parsePkValues(table, keys);
 
         const { sql, parameters } = buildUpdateQuery(table, pkValues, body);
         const sqlRequest = pool.request();
@@ -153,7 +190,7 @@ export function registerTableRoutes(
         const updated = result.recordset[0] as Record<string, unknown> | undefined;
 
         if (!updated) {
-          throw new NotFoundError(`${table.name} with id '${id}' not found`);
+          throw new NotFoundError(`${table.name} not found`);
         }
 
         setResponseHeaders(reply, request.responseFormat);
@@ -165,13 +202,12 @@ export function registerTableRoutes(
         return reply.send(updated);
       });
 
-      // PUT - Full update (same as PATCH for now)
-      app.put(`${path}/:id`, async (request, reply) => {
+      // PUT - Full update
+      app.put(`${path}/:keys`, async (request, reply) => {
         const pool = getPool();
-        const { id } = request.params as { id: string };
+        const { keys } = request.params as { keys: string };
         const body = request.body as Record<string, unknown>;
-        const pkValues = new Map<string, string>();
-        pkValues.set(table.primaryKey[0]!, id);
+        const pkValues = parsePkValues(table, keys);
 
         const { sql, parameters } = buildUpdateQuery(table, pkValues, body);
         const sqlRequest = pool.request();
@@ -183,7 +219,7 @@ export function registerTableRoutes(
         const updated = result.recordset[0] as Record<string, unknown> | undefined;
 
         if (!updated) {
-          throw new NotFoundError(`${table.name} with id '${id}' not found`);
+          throw new NotFoundError(`${table.name} not found`);
         }
 
         setResponseHeaders(reply, request.responseFormat);
@@ -196,11 +232,10 @@ export function registerTableRoutes(
       });
 
       // DELETE
-      app.delete(`${path}/:id`, async (request, reply) => {
+      app.delete(`${path}/:keys`, async (request, reply) => {
         const pool = getPool();
-        const { id } = request.params as { id: string };
-        const pkValues = new Map<string, string>();
-        pkValues.set(table.primaryKey[0]!, id);
+        const { keys } = request.params as { keys: string };
+        const pkValues = parsePkValues(table, keys);
 
         const { sql, parameters } = buildDeleteQuery(table, pkValues);
         const sqlRequest = pool.request();
@@ -212,7 +247,7 @@ export function registerTableRoutes(
         const deleted = result.recordset[0] as Record<string, unknown> | undefined;
 
         if (!deleted) {
-          throw new NotFoundError(`${table.name} with id '${id}' not found`);
+          throw new NotFoundError(`${table.name} not found`);
         }
 
         setResponseHeaders(reply, request.responseFormat);
@@ -225,16 +260,15 @@ export function registerTableRoutes(
         return reply.send(deleted);
       });
     } else {
-      // Read-only mode: return 405 for write operations
       const readonlyHandler = async () => {
         throw new MethodNotAllowedError();
       };
 
       app.post(path, readonlyHandler);
       if (table.primaryKey.length > 0) {
-        app.patch(`${path}/:id`, readonlyHandler);
-        app.put(`${path}/:id`, readonlyHandler);
-        app.delete(`${path}/:id`, readonlyHandler);
+        app.patch(`${path}/:keys`, readonlyHandler);
+        app.put(`${path}/:keys`, readonlyHandler);
+        app.delete(`${path}/:keys`, readonlyHandler);
       }
     }
   }
@@ -250,7 +284,6 @@ async function resolveExpand(
   const pool = getPool();
 
   for (const expandItem of expandItems) {
-    // Find relationship
     const rel = schema.relationships.find(
       (r) =>
         (r.fromTable === table.name &&
@@ -269,28 +302,25 @@ async function resolveExpand(
       );
     }
 
-    // Determine direction
     const isParent = rel.fromTable === table.name && rel.fromSchema === table.schema;
     const relatedTableName = isParent ? rel.toTable : rel.fromTable;
     const relatedSchema = isParent ? rel.toSchema : rel.fromSchema;
     const localColumn = isParent ? rel.fromColumn : rel.toColumn;
     const foreignColumn = isParent ? rel.toColumn : rel.fromColumn;
 
-    // Collect unique FK values
     const fkValues = [
       ...new Set(data.map((row) => row[localColumn]).filter((v) => v !== null && v !== undefined)),
     ];
 
     if (fkValues.length === 0) continue;
 
-    // Find the related table info
     const relatedTable = [...schema.tables, ...schema.views].find(
       (t) => t.name === relatedTableName && t.schema === relatedSchema,
     );
 
     if (!relatedTable) continue;
 
-    // Build query for related data
+    // Build query with nested options support
     const placeholders = fkValues.map((_, i) => `@expand${i}`).join(', ');
     const sqlRequest = pool.request();
     fkValues.forEach((v, i) => sqlRequest.input(`expand${i}`, v));
@@ -301,21 +331,42 @@ async function resolveExpand(
 
     let sql = `SELECT ${selectCols} FROM [${relatedSchema}].[${relatedTableName}] WHERE [${foreignColumn}] IN (${placeholders})`;
 
-    if (expandItem.top) {
-      sql = `SELECT TOP ${Math.min(expandItem.top, config.maxPageSize)} ${selectCols} FROM [${relatedSchema}].[${relatedTableName}] WHERE [${foreignColumn}] IN (${placeholders})`;
+    // Nested $filter
+    if (expandItem.filter) {
+      const { buildWhereClause } = await import('../query/builder.js');
+      const ctx = { paramCounter: 0, parameters: new Map<string, unknown>() };
+      const whereClause = buildWhereClause(expandItem.filter, relatedTable, ctx);
+      sql += ` AND (${whereClause})`;
+      for (const [key, value] of ctx.parameters) {
+        sqlRequest.input(`ef_${key}`, value);
+      }
+      sql = sql.replace(/@p(\d+)/g, '@ef_p$1');
+    }
+
+    // Nested $orderby
+    if (expandItem.orderBy) {
+      const orderClauses = expandItem.orderBy.items
+        .map((item) => `[${item.column}] ${item.direction.toUpperCase()}`)
+        .join(', ');
+      sql += ` ORDER BY ${orderClauses}`;
+    }
+
+    // Nested $top / $skip via OFFSET-FETCH (requires ORDER BY)
+    if (expandItem.top && expandItem.orderBy) {
+      const skip = expandItem.skip ?? 0;
+      sql += ` OFFSET ${skip} ROWS FETCH NEXT ${Math.min(expandItem.top, config.maxPageSize)} ROWS ONLY`;
+    } else if (expandItem.top) {
+      sql = sql.replace('SELECT ', `SELECT TOP ${Math.min(expandItem.top, config.maxPageSize)} `);
     }
 
     const result = await sqlRequest.query(sql);
     const relatedData = result.recordset as Record<string, unknown>[];
 
-    // Attach to parent rows
     for (const row of data) {
       const localVal = row[localColumn];
       if (isParent) {
-        // Many-to-one: attach single object
         row[expandItem.property] = relatedData.find((r) => r[foreignColumn] === localVal) ?? null;
       } else {
-        // One-to-many: attach array
         row[expandItem.property] = relatedData.filter((r) => r[foreignColumn] === localVal);
       }
     }

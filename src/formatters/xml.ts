@@ -53,6 +53,19 @@ export function formatSingleXmlResponse(
   return builder.build(xml) as string;
 }
 
+export function formatXmlError(code: string, message: string): string {
+  const xml = {
+    '?xml': { '@_version': '1.0', '@_encoding': 'UTF-8' },
+    'm:error': {
+      '@_xmlns:m': 'http://schemas.microsoft.com/ado/2007/08/dataservices/metadata',
+      'm:code': code,
+      'm:message': message,
+    },
+  };
+
+  return builder.build(xml) as string;
+}
+
 function buildProperties(item: Record<string, unknown>): Record<string, unknown> {
   const props: Record<string, unknown> = {};
 

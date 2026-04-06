@@ -8,6 +8,10 @@ export function parseCliArgs(argv?: string[]): Partial<AppConfig> {
     .name('mssql-rest-api')
     .description('Zero-code REST API server for SQL Server with OData support')
     .version('0.1.0')
+    .option(
+      '--connection <string>',
+      'Connection string (Server=...;Database=...;User Id=...;Password=...)',
+    )
     .option('--host <host>', 'SQL Server host')
     .option('--port <port>', 'SQL Server port', parseInt)
     .option('--database <database>', 'Database name')
@@ -32,6 +36,11 @@ export function parseCliArgs(argv?: string[]): Partial<AppConfig> {
 
   const config: Partial<AppConfig> = {};
 
+  if (opts['connection']) {
+    const parsed = parseConnectionString(opts['connection']);
+    Object.assign(config, parsed);
+  }
+
   if (opts['host'] !== undefined) config.host = opts['host'];
   if (opts['port'] !== undefined) config.port = opts['port'];
   if (opts['database'] !== undefined) config.database = opts['database'];
@@ -48,6 +57,51 @@ export function parseCliArgs(argv?: string[]): Partial<AppConfig> {
   if (opts['defaultPageSize'] !== undefined) config.defaultPageSize = opts['defaultPageSize'];
   if (opts['maxPageSize'] !== undefined) config.maxPageSize = opts['maxPageSize'];
   if (opts['logLevel'] !== undefined) config.logLevel = opts['logLevel'];
+
+  return config;
+}
+
+function parseConnectionString(connStr: string): Partial<AppConfig> {
+  const config: Partial<AppConfig> = {};
+  const pairs = connStr.split(';').filter(Boolean);
+
+  for (const pair of pairs) {
+    const eqIdx = pair.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = pair.substring(0, eqIdx).trim().toLowerCase();
+    const value = pair.substring(eqIdx + 1).trim();
+
+    switch (key) {
+      case 'server':
+      case 'data source':
+        if (value.includes(',')) {
+          const [host, port] = value.split(',');
+          config.host = host!.trim();
+          config.port = parseInt(port!.trim(), 10);
+        } else {
+          config.host = value;
+        }
+        break;
+      case 'database':
+      case 'initial catalog':
+        config.database = value;
+        break;
+      case 'user id':
+      case 'uid':
+        config.user = value;
+        break;
+      case 'password':
+      case 'pwd':
+        config.password = value;
+        break;
+      case 'encrypt':
+        config.encrypt = value.toLowerCase() === 'true';
+        break;
+      case 'trustservercertificate':
+        config.trustServerCertificate = value.toLowerCase() === 'true';
+        break;
+    }
+  }
 
   return config;
 }
