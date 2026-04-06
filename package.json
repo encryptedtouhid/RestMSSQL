@@ -23,6 +23,10 @@
     "test:coverage": "vitest run --coverage",
     "secretlint": "secretlint \"**/*\"",
     "typecheck": "tsc --noEmit",
+    "release": "standard-version",
+    "release:minor": "standard-version --release-as minor",
+    "release:major": "standard-version --release-as major",
+    "release:patch": "standard-version --release-as patch",
     "prepare": "husky",
     "docker:up": "docker compose -f docker/docker-compose.yml up -d",
     "docker:down": "docker compose -f docker/docker-compose.yml down -v"
@@ -49,6 +53,8 @@
     "pino": "^9.6.0"
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
     "@eslint/js": "^9.18.0",
     "@secretlint/secretlint-rule-preset-recommend": "^8.4.1",
     "@types/mssql": "^9.1.11",
@@ -59,6 +65,7 @@
     "lint-staged": "^15.4.3",
     "prettier": "^3.4.2",
     "secretlint": "^8.4.1",
+    "standard-version": "^9.5.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.21.0",
