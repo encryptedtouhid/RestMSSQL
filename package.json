@@ -43,7 +43,9 @@
     "rest-api",
     "odata",
     "auto-api",
-    "postgrest"
+    "restmssql",
+    "zero-code",
+    "fastify"
   ],
   "author": "Khaled Md Tuhidul Hossain (https://tuhidulhossain.com)",
   "license": "MIT",
