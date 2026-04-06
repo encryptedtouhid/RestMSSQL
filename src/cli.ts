@@ -14,7 +14,7 @@ export function parseCliArgs(argv?: string[]): Partial<AppConfig> {
   const program = new Command();
 
   program
-    .name('mssql-rest-api')
+    .name('RestMSSQL')
     .description(pkg.description)
     .version(pkg.version, '-v, --version')
     .option(
@@ -54,12 +54,12 @@ export function parseCliArgs(argv?: string[]): Partial<AppConfig> {
   License:  ${pkg.license}
   Copyright (c) ${new Date().getFullYear()} Khaled Md Tuhidul Hossain
 
-  GitHub:   https://github.com/encryptedtouhid/mssql-rest-api
-  Issues:   https://github.com/encryptedtouhid/mssql-rest-api/issues
+  GitHub:   https://github.com/encryptedtouhid/restmssql
+  Issues:   https://github.com/encryptedtouhid/restmssql/issues
 
   Usage:
-    mssql-rest-api --database <name> --user <user> --password <pass>
-    mssql-rest-api --connection "Server=host;Database=db;User Id=sa;Password=pass"
+    restmssql --database <name> --user <user> --password <pass>
+    restmssql --connection "Server=host;Database=db;User Id=sa;Password=pass"
 
   Endpoints:
     /api              Service document

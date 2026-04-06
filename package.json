@@ -1,12 +1,12 @@
 {
-  "name": "mssql-rest-api",
+  "name": "restmssql",
   "version": "0.1.1",
   "description": "Zero-code REST API server for SQL Server with OData support",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "mssql-rest-api": "dist/index.js"
+    "restmssql": "dist/index.js"
   },
   "files": [
     "dist",
