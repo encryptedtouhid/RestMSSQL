@@ -10,7 +10,7 @@ export function registerMetadataRoutes(
   config: AppConfig,
 ): void {
   // OData $metadata endpoint (always XML)
-  app.get('/api/\\$metadata', async (_request, reply) => {
+  app.get('/api/$metadata', async (_request, reply) => {
     const metadata = generateODataMetadata(schema);
     void reply.header('Content-Type', 'application/xml; charset=utf-8');
     return reply.send(metadata);
