@@ -46,7 +46,7 @@ async function main() {
   process.on('SIGTERM', shutdown);
 
   await server.listen({ port: config.serverPort, host: config.listenHost });
-  server.log.info(`mssql-rest-api listening on http://${config.listenHost}:${config.serverPort}`);
+  server.log.info(`RestMSSQL listening on http://${config.listenHost}:${config.serverPort}`);
   server.log.info(`Mode: ${config.readonly ? 'read-only' : 'read-write'}`);
 }
 

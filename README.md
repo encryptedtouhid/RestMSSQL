@@ -1,4 +1,4 @@
-# mssql-rest-api
+# RestMSSQL
 
 [![CI](https://github.com/encryptedtouhid/mssql-rest-api/actions/workflows/ci.yml/badge.svg)](https://github.com/encryptedtouhid/mssql-rest-api/actions/workflows/ci.yml)
 
