@@ -17,10 +17,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          registry-url: 'https://registry.npmjs.org'
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test:unit
+      - run: npm run build
       - name: Extract changelog for this version
         id: changelog
         env:
@@ -40,3 +42,7 @@ jobs:
           gh release create "$TAG_NAME" \
             --title "$TAG_NAME" \
             --notes "$RELEASE_NOTES"
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
