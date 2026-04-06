@@ -15,6 +15,15 @@ export async function createServer(config: AppConfig) {
     logger: {
       level: config.logLevel,
     },
+    bodyLimit: 1048576, // 1MB
+  });
+
+  // Security headers
+  app.addHook('onSend', (_request, reply, _payload, done) => {
+    void reply.header('X-Content-Type-Options', 'nosniff');
+    void reply.header('X-Frame-Options', 'DENY');
+    void reply.header('X-XSS-Protection', '1; mode=block');
+    done();
   });
 
   // CORS

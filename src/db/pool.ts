@@ -2,32 +2,50 @@ import sql from 'mssql';
 import type { AppConfig } from '../config.js';
 
 let pool: sql.ConnectionPool | null = null;
+let initPromise: Promise<sql.ConnectionPool> | null = null;
 
 export async function initPool(config: AppConfig): Promise<sql.ConnectionPool> {
   if (pool) {
     return pool;
   }
 
-  const sqlConfig: sql.config = {
-    server: config.host,
-    port: config.port,
-    database: config.database,
-    user: config.user,
-    password: config.password,
-    options: {
-      encrypt: config.encrypt,
-      trustServerCertificate: config.trustServerCertificate,
-    },
-    pool: {
-      min: 2,
-      max: 10,
-      idleTimeoutMillis: 30000,
-    },
-  };
+  // Prevent race condition: if init is already in progress, return the same promise
+  if (initPromise) {
+    return initPromise;
+  }
 
-  pool = new sql.ConnectionPool(sqlConfig);
-  await pool.connect();
-  return pool;
+  initPromise = (async () => {
+    const sqlConfig: sql.config = {
+      server: config.host,
+      port: config.port,
+      database: config.database,
+      user: config.user,
+      password: config.password,
+      options: {
+        encrypt: config.encrypt,
+        trustServerCertificate: config.trustServerCertificate,
+      },
+      pool: {
+        min: 2,
+        max: 10,
+        idleTimeoutMillis: 30000,
+      },
+      requestTimeout: 30000,
+      connectionTimeout: 15000,
+    };
+
+    const newPool = new sql.ConnectionPool(sqlConfig);
+    await newPool.connect();
+    pool = newPool;
+    return newPool;
+  })();
+
+  try {
+    return await initPromise;
+  } catch (err) {
+    initPromise = null;
+    throw err;
+  }
 }
 
 export function getPool(): sql.ConnectionPool {
@@ -39,7 +57,12 @@ export function getPool(): sql.ConnectionPool {
 
 export async function closePool(): Promise<void> {
   if (pool) {
-    await pool.close();
+    try {
+      await pool.close();
+    } catch {
+      // Ignore close errors during shutdown
+    }
     pool = null;
+    initPromise = null;
   }
 }

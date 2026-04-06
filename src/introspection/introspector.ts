@@ -10,33 +10,35 @@ export async function introspectDatabase(
   pool: sql.ConnectionPool,
   config: AppConfig,
 ): Promise<DatabaseSchema> {
-  const rawTables = await discoverTables(pool, config.schemas, config.excludeTables);
+  // Run independent queries in parallel
+  const [rawTables, relationships, procedures] = await Promise.all([
+    discoverTables(pool, config.schemas, config.excludeTables),
+    discoverRelationships(pool, config.schemas),
+    discoverProcedures(pool, config.schemas),
+  ]);
 
-  const tables: TableInfo[] = [];
-  const views: TableInfo[] = [];
+  // Batch column and PK discovery in parallel per table
+  const tableInfos = await Promise.all(
+    rawTables.map(async (raw) => {
+      const [columns, primaryKey] = await Promise.all([
+        discoverColumns(pool, raw.schema, raw.name),
+        raw.type === 'TABLE'
+          ? discoverPrimaryKeys(pool, raw.schema, raw.name)
+          : Promise.resolve([]),
+      ]);
 
-  for (const raw of rawTables) {
-    const columns = await discoverColumns(pool, raw.schema, raw.name);
-    const primaryKey =
-      raw.type === 'TABLE' ? await discoverPrimaryKeys(pool, raw.schema, raw.name) : [];
+      return {
+        schema: raw.schema,
+        name: raw.name,
+        type: raw.type,
+        columns,
+        primaryKey,
+      } as TableInfo;
+    }),
+  );
 
-    const tableInfo: TableInfo = {
-      schema: raw.schema,
-      name: raw.name,
-      type: raw.type,
-      columns,
-      primaryKey,
-    };
-
-    if (raw.type === 'VIEW') {
-      views.push(tableInfo);
-    } else {
-      tables.push(tableInfo);
-    }
-  }
-
-  const relationships = await discoverRelationships(pool, config.schemas);
-  const procedures = await discoverProcedures(pool, config.schemas);
+  const tables = tableInfos.filter((t) => t.type === 'TABLE');
+  const views = tableInfos.filter((t) => t.type === 'VIEW');
 
   return { tables, views, relationships, procedures };
 }
