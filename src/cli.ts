@@ -3,15 +3,20 @@ import { Command } from 'commander';
 import type { AppConfig } from './config.js';
 
 const require = createRequire(import.meta.url);
-const pkg = require('../package.json') as { version: string };
+const pkg = require('../package.json') as {
+  version: string;
+  description: string;
+  license: string;
+  name: string;
+};
 
 export function parseCliArgs(argv?: string[]): Partial<AppConfig> {
   const program = new Command();
 
   program
     .name('mssql-rest-api')
-    .description('Zero-code REST API server for SQL Server with OData support')
-    .version(pkg.version)
+    .description(pkg.description)
+    .version(pkg.version, '-v, --version')
     .option(
       '--connection <string>',
       'Connection string (Server=...;Database=...;User Id=...;Password=...)',
@@ -35,9 +40,36 @@ export function parseCliArgs(argv?: string[]): Partial<AppConfig> {
     .option('--exclude-tables <tables>', 'Comma-separated list of tables to exclude')
     .option('--default-page-size <size>', 'Default page size', parseInt)
     .option('--max-page-size <size>', 'Maximum page size', parseInt)
-    .option('--log-level <level>', 'Log level (fatal, error, warn, info, debug, trace)');
+    .option('--log-level <level>', 'Log level (fatal, error, warn, info, debug, trace)')
+    .option('--about', 'Show project information');
 
   program.parse(argv ?? process.argv);
+
+  if (program.opts()['about']) {
+    console.log(`
+  ${pkg.name} v${pkg.version}
+  ${pkg.description}
+
+  Author:   Khaled Md Tuhidul Hossain (https://tuhidulhossain.com)
+  License:  ${pkg.license}
+  Copyright (c) ${new Date().getFullYear()} Khaled Md Tuhidul Hossain
+
+  GitHub:   https://github.com/encryptedtouhid/mssql-rest-api
+  Issues:   https://github.com/encryptedtouhid/mssql-rest-api/issues
+
+  Usage:
+    mssql-rest-api --database <name> --user <user> --password <pass>
+    mssql-rest-api --connection "Server=host;Database=db;User Id=sa;Password=pass"
+
+  Endpoints:
+    /api              Service document
+    /api/<Table>      OData-compatible CRUD
+    /rpc/<Procedure>  Stored procedure execution
+    /api/$metadata    OData CSDL metadata
+    /swagger          Swagger UI
+`);
+    process.exit(0);
+  }
   const opts = program.opts();
 
   const config: Partial<AppConfig> = {};

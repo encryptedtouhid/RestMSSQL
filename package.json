@@ -45,6 +45,7 @@
     "auto-api",
     "postgrest"
   ],
+  "author": "Khaled Md Tuhidul Hossain (https://tuhidulhossain.com)",
   "license": "MIT",
   "dependencies": {
     "@fastify/cors": "^10.0.2",
