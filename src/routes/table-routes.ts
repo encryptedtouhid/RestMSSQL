@@ -152,7 +152,7 @@ export function registerTableRoutes(
       // POST - Create
       app.post(path, async (request, reply) => {
         const pool = getPool();
-        const body = request.body as Record<string, unknown>;
+        const body = (request.body ?? {}) as Record<string, unknown>;
         const { sql, parameters } = buildInsertQuery(table, body);
 
         const sqlRequest = pool.request();
@@ -177,7 +177,7 @@ export function registerTableRoutes(
       app.patch(`${path}/:keys`, async (request, reply) => {
         const pool = getPool();
         const { keys } = request.params as { keys: string };
-        const body = request.body as Record<string, unknown>;
+        const body = (request.body ?? {}) as Record<string, unknown>;
         const pkValues = parsePkValues(table, keys);
 
         const { sql, parameters } = buildUpdateQuery(table, pkValues, body);
@@ -206,7 +206,7 @@ export function registerTableRoutes(
       app.put(`${path}/:keys`, async (request, reply) => {
         const pool = getPool();
         const { keys } = request.params as { keys: string };
-        const body = request.body as Record<string, unknown>;
+        const body = (request.body ?? {}) as Record<string, unknown>;
         const pkValues = parsePkValues(table, keys);
 
         const { sql, parameters } = buildUpdateQuery(table, pkValues, body);
