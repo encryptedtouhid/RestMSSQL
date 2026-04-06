@@ -80,14 +80,14 @@ describe('buildSelectQuery', () => {
   it('builds basic SELECT *', () => {
     const query: ODataQuery = {};
     const result = buildSelectQuery(mockTable, query, 100);
-    expect(result.sql).toBe('SELECT * FROM [dbo].[Products]');
+    expect(result.sql).toBe('SELECT TOP 100 * FROM [dbo].[Products]');
     expect(result.parameters.size).toBe(0);
   });
 
   it('builds SELECT with $select', () => {
     const query: ODataQuery = { select: { columns: ['Name', 'Price'] } };
     const result = buildSelectQuery(mockTable, query, 100);
-    expect(result.sql).toBe('SELECT [Name], [Price] FROM [dbo].[Products]');
+    expect(result.sql).toBe('SELECT TOP 100 [Name], [Price] FROM [dbo].[Products]');
   });
 
   it('builds SELECT with $filter', () => {
@@ -164,7 +164,9 @@ describe('buildSelectQuery', () => {
       },
     };
     const result = buildSelectQuery(mockTable, query, 100);
-    expect(result.sql).toContain("WHERE [Name] LIKE '%' + @p0 + '%'");
+    expect(result.sql).toContain(
+      "WHERE [Name] LIKE '%' + REPLACE(REPLACE(REPLACE(@p0, '[', '[[]'), '%', '[%]'), '_', '[_]') + '%'",
+    );
     expect(result.parameters.get('p0')).toBe('widget');
   });
 

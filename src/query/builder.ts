@@ -46,10 +46,11 @@ export function buildSelectQuery(
     !!orderByClause,
   );
 
-  let sql = `SELECT ${selectClause} FROM ${tableName}`;
+  const topPart = paginationClause.topClause ? `${paginationClause.topClause} ` : '';
+  let sql = `SELECT ${topPart}${selectClause} FROM ${tableName}`;
   if (whereClause) sql += ` WHERE ${whereClause}`;
   if (orderByClause) sql += ` ORDER BY ${orderByClause}`;
-  if (paginationClause) sql += ` ${paginationClause}`;
+  if (paginationClause.offsetClause) sql += ` ${paginationClause.offsetClause}`;
 
   return { sql, parameters: ctx.parameters };
 }
@@ -100,23 +101,25 @@ function buildOrderByClause(orderBy: OrderByOption | undefined, table: TableInfo
     .join(', ');
 }
 
+interface PaginationResult {
+  topClause: string;
+  offsetClause: string;
+}
+
 function buildPaginationClause(
   pagination: PaginationOption | undefined,
   defaultPageSize: number,
   hasOrderBy: boolean,
-): string {
+): PaginationResult {
   const top = pagination?.top ?? defaultPageSize;
   const skip = pagination?.skip ?? 0;
 
-  if (!hasOrderBy) {
-    // OFFSET/FETCH requires ORDER BY, so use TOP instead if no ORDER BY
-    if (skip === 0) {
-      return ''; // Will add TOP to SELECT
-    }
-    return '';
+  if (hasOrderBy) {
+    return { topClause: '', offsetClause: `OFFSET ${skip} ROWS FETCH NEXT ${top} ROWS ONLY` };
   }
 
-  return `OFFSET ${skip} ROWS FETCH NEXT ${top} ROWS ONLY`;
+  // No ORDER BY: use TOP (OFFSET/FETCH requires ORDER BY)
+  return { topClause: `TOP ${top}`, offsetClause: '' };
 }
 
 export function buildWhereClause(node: FilterNode, table: TableInfo, ctx: QueryContext): string {
@@ -186,11 +189,11 @@ function buildFunctionCall(
 
   switch (name) {
     case 'contains':
-      return `${builtArgs[0]} LIKE '%' + ${builtArgs[1]} + '%'`;
+      return `${builtArgs[0]} LIKE '%' + REPLACE(REPLACE(REPLACE(${builtArgs[1]}, '[', '[[]'), '%', '[%]'), '_', '[_]') + '%'`;
     case 'startswith':
-      return `${builtArgs[0]} LIKE ${builtArgs[1]} + '%'`;
+      return `${builtArgs[0]} LIKE REPLACE(REPLACE(REPLACE(${builtArgs[1]}, '[', '[[]'), '%', '[%]'), '_', '[_]') + '%'`;
     case 'endswith':
-      return `${builtArgs[0]} LIKE '%' + ${builtArgs[1]}`;
+      return `${builtArgs[0]} LIKE '%' + REPLACE(REPLACE(REPLACE(${builtArgs[1]}, '[', '[[]'), '%', '[%]'), '_', '[_]')`;
     case 'tolower':
       return `LOWER(${builtArgs[0]})`;
     case 'toupper':

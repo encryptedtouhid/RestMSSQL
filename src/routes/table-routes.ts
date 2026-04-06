@@ -3,12 +3,18 @@ import type { TableInfo, DatabaseSchema } from '../introspection/types.js';
 import type { ExpandItem } from '../odata/types.js';
 import type { AppConfig } from '../config.js';
 import { parseODataQuery } from '../odata/parser.js';
-import { buildSelectQuery, buildCountQuery, buildSingleRowQuery } from '../query/builder.js';
+import {
+  buildSelectQuery,
+  buildCountQuery,
+  buildSingleRowQuery,
+  buildWhereClause,
+} from '../query/builder.js';
 import { buildInsertQuery, buildUpdateQuery, buildDeleteQuery } from '../query/write.js';
 import { formatJsonResponse, formatSingleJsonResponse } from '../formatters/json.js';
 import { formatXmlResponse, formatSingleXmlResponse } from '../formatters/xml.js';
 import { setResponseHeaders } from '../formatters/content-negotiation.js';
 import { getPool } from '../db/pool.js';
+import { quoteIdentifier } from '../query/sanitizer.js';
 import {
   BadRequestError,
   NotFoundError,
@@ -16,10 +22,12 @@ import {
   AppError,
 } from '../utils/errors.js';
 
+const DEFAULT_EXPAND_LIMIT = 1000;
+
 /**
  * Parse PK values from route param.
- * Single PK:    /:id        → "5"
- * Composite PK: /:keys      → "WarehouseId=1,ProductId=2"
+ * Single PK:    "5"
+ * Composite PK: "WarehouseId=1,ProductId=2"
  */
 function parsePkValues(table: TableInfo, raw: string): Map<string, string> {
   const pkValues = new Map<string, string>();
@@ -40,6 +48,14 @@ function parsePkValues(table: TableInfo, raw: string): Map<string, string> {
     }
     const key = pair.substring(0, eqIdx).trim();
     const value = pair.substring(eqIdx + 1).trim();
+
+    // Validate key is an actual PK column
+    if (!table.primaryKey.some((pk) => pk.toLowerCase() === key.toLowerCase())) {
+      throw new BadRequestError(
+        `'${key}' is not a primary key column. Valid keys: ${table.primaryKey.join(', ')}`,
+      );
+    }
+
     pkValues.set(key, value);
   }
 
@@ -51,6 +67,17 @@ function parsePkValues(table: TableInfo, raw: string): Map<string, string> {
   }
 
   return pkValues;
+}
+
+function validateExpandColumns(columns: string[], table: TableInfo, context: string): void {
+  for (const col of columns) {
+    const exists = table.columns.some((c) => c.name.toLowerCase() === col.toLowerCase());
+    if (!exists) {
+      throw new BadRequestError(
+        `Column '${col}' does not exist in ${table.schema}.${table.name} (in $expand ${context})`,
+      );
+    }
+  }
 }
 
 export function registerTableRoutes(
@@ -82,28 +109,31 @@ export function registerTableRoutes(
         config.maxPageSize,
       );
 
-      const { sql, parameters } = buildSelectQuery(table, odataQuery, config.defaultPageSize);
-      const sqlRequest = pool.request();
-      for (const [key, value] of parameters) {
-        sqlRequest.input(key, value);
+      // Run data query and count query in parallel when $count requested
+      const dataQueryInfo = buildSelectQuery(table, odataQuery, config.defaultPageSize);
+      const dataRequest = pool.request();
+      for (const [key, value] of dataQueryInfo.parameters) {
+        dataRequest.input(key, value);
       }
+      const dataPromise = dataRequest.query(dataQueryInfo.sql);
 
-      const result = await sqlRequest.query(sql);
-      let data = result.recordset as Record<string, unknown>[];
-
-      if (odataQuery.expand) {
-        data = await resolveExpand(data, table, odataQuery.expand.items, schema, config);
-      }
-
-      let count: number | undefined;
+      let countPromise: Promise<number | undefined> = Promise.resolve(undefined);
       if (odataQuery.count) {
         const countQuery = buildCountQuery(table, odataQuery);
         const countRequest = pool.request();
         for (const [key, value] of countQuery.parameters) {
           countRequest.input(key, value);
         }
-        const countResult = await countRequest.query(countQuery.sql);
-        count = (countResult.recordset[0] as { count: number } | undefined)?.count;
+        countPromise = countRequest
+          .query(countQuery.sql)
+          .then((r) => (r.recordset[0] as { count: number } | undefined)?.count);
+      }
+
+      const [dataResult, count] = await Promise.all([dataPromise, countPromise]);
+      let data = dataResult.recordset as Record<string, unknown>[];
+
+      if (odataQuery.expand) {
+        data = await resolveExpand(data, table, odataQuery.expand.items, schema, config);
       }
 
       const context = `${request.protocol}://${request.hostname}/api/$metadata#${table.name}`;
@@ -161,7 +191,11 @@ export function registerTableRoutes(
         }
 
         const result = await sqlRequest.query(sql);
-        const created = result.recordset[0] as Record<string, unknown>;
+        const created = result.recordset[0] as Record<string, unknown> | undefined;
+
+        if (!created) {
+          throw new AppError('Insert did not return a result', 500, 'INTERNAL_ERROR');
+        }
 
         setResponseHeaders(reply, request.responseFormat);
         void reply.status(201);
@@ -283,7 +317,8 @@ async function resolveExpand(
 ): Promise<Record<string, unknown>[]> {
   const pool = getPool();
 
-  for (const expandItem of expandItems) {
+  // Run expand queries in parallel
+  const expandTasks = expandItems.map(async (expandItem) => {
     const rel = schema.relationships.find(
       (r) =>
         (r.fromTable === table.name &&
@@ -312,56 +347,91 @@ async function resolveExpand(
       ...new Set(data.map((row) => row[localColumn]).filter((v) => v !== null && v !== undefined)),
     ];
 
-    if (fkValues.length === 0) continue;
+    if (fkValues.length === 0)
+      return { expandItem, relatedData: [], localColumn, foreignColumn, isParent };
 
     const relatedTable = [...schema.tables, ...schema.views].find(
       (t) => t.name === relatedTableName && t.schema === relatedSchema,
     );
 
-    if (!relatedTable) continue;
+    if (!relatedTable) return { expandItem, relatedData: [], localColumn, foreignColumn, isParent };
 
-    // Build query with nested options support
-    const placeholders = fkValues.map((_, i) => `@expand${i}`).join(', ');
+    // Validate nested $select and $orderby columns against related table schema
+    if (expandItem.select) {
+      validateExpandColumns(expandItem.select.columns, relatedTable, '$select');
+    }
+    if (expandItem.orderBy) {
+      validateExpandColumns(
+        expandItem.orderBy.items.map((i) => i.column),
+        relatedTable,
+        '$orderby',
+      );
+    }
+
     const sqlRequest = pool.request();
-    fkValues.forEach((v, i) => sqlRequest.input(`expand${i}`, v));
+    let paramCounter = 0;
+
+    // FK IN clause
+    const placeholders = fkValues.map((v, i) => {
+      sqlRequest.input(`ex${i}`, v);
+      return `@ex${i}`;
+    });
+    paramCounter = fkValues.length;
 
     const selectCols = expandItem.select
-      ? expandItem.select.columns.map((c) => `[${c}]`).join(', ')
+      ? expandItem.select.columns.map((c) => quoteIdentifier(c)).join(', ')
       : '*';
 
-    let sql = `SELECT ${selectCols} FROM [${relatedSchema}].[${relatedTableName}] WHERE [${foreignColumn}] IN (${placeholders})`;
+    // Apply expand limit: use $top if provided, otherwise DEFAULT_EXPAND_LIMIT
+    const expandLimit = expandItem.top
+      ? Math.min(expandItem.top, config.maxPageSize)
+      : DEFAULT_EXPAND_LIMIT;
 
-    // Nested $filter
+    let sql = `SELECT ${selectCols} FROM ${quoteIdentifier(relatedSchema)}.${quoteIdentifier(relatedTableName)} WHERE ${quoteIdentifier(foreignColumn)} IN (${placeholders.join(', ')})`;
+
+    // Nested $filter — use dedicated param prefix to avoid collisions
     if (expandItem.filter) {
-      const { buildWhereClause } = await import('../query/builder.js');
       const ctx = { paramCounter: 0, parameters: new Map<string, unknown>() };
       const whereClause = buildWhereClause(expandItem.filter, relatedTable, ctx);
-      sql += ` AND (${whereClause})`;
+      // Re-map param names to avoid collision with expand params
+      let mappedWhere = whereClause;
       for (const [key, value] of ctx.parameters) {
-        sqlRequest.input(`ef_${key}`, value);
+        const newKey = `exf${paramCounter++}`;
+        mappedWhere = mappedWhere.replace(`@${key}`, `@${newKey}`);
+        sqlRequest.input(newKey, value);
       }
-      sql = sql.replace(/@p(\d+)/g, '@ef_p$1');
+      sql += ` AND (${mappedWhere})`;
     }
 
     // Nested $orderby
     if (expandItem.orderBy) {
       const orderClauses = expandItem.orderBy.items
-        .map((item) => `[${item.column}] ${item.direction.toUpperCase()}`)
+        .map((item) => `${quoteIdentifier(item.column)} ${item.direction.toUpperCase()}`)
         .join(', ');
       sql += ` ORDER BY ${orderClauses}`;
-    }
 
-    // Nested $top / $skip via OFFSET-FETCH (requires ORDER BY)
-    if (expandItem.top && expandItem.orderBy) {
+      // With ORDER BY, use OFFSET-FETCH for limit
       const skip = expandItem.skip ?? 0;
-      sql += ` OFFSET ${skip} ROWS FETCH NEXT ${Math.min(expandItem.top, config.maxPageSize)} ROWS ONLY`;
-    } else if (expandItem.top) {
-      sql = sql.replace('SELECT ', `SELECT TOP ${Math.min(expandItem.top, config.maxPageSize)} `);
+      sql += ` OFFSET ${skip} ROWS FETCH NEXT ${expandLimit} ROWS ONLY`;
+    } else {
+      // Without ORDER BY, use TOP
+      sql = sql.replace('SELECT ', `SELECT TOP ${expandLimit} `);
     }
 
     const result = await sqlRequest.query(sql);
-    const relatedData = result.recordset as Record<string, unknown>[];
+    return {
+      expandItem,
+      relatedData: result.recordset as Record<string, unknown>[],
+      localColumn,
+      foreignColumn,
+      isParent,
+    };
+  });
 
+  const results = await Promise.all(expandTasks);
+
+  // Attach results to parent rows
+  for (const { expandItem, relatedData, localColumn, foreignColumn, isParent } of results) {
     for (const row of data) {
       const localVal = row[localColumn];
       if (isParent) {
