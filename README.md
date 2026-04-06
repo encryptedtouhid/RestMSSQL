@@ -25,6 +25,48 @@ npx tsx src/index.ts \
 # Swagger: http://localhost:3000/swagger
 ```
 
+## CLI Usage
+
+After installing globally with `npm install -g restmssql`, the `restmssql` command is available:
+
+```bash
+# Show help
+restmssql --help
+
+# Show version
+restmssql --version
+
+# Show project info
+restmssql --about
+
+# Start the API server
+restmssql --database mydb --user sa --password "YourP@ssword" --trust-server-certificate
+
+# Use a connection string
+restmssql --connection "Server=localhost;Database=mydb;User Id=sa;Password=YourP@ssword"
+
+# Expose multiple schemas in read-write mode on a custom port
+restmssql --database mydb --user sa --password "YourP@ssword" \
+  --schemas dbo,sales,hr \
+  --no-readonly \
+  --server-port 8080
+
+# Listen on all interfaces (for Docker/remote access)
+restmssql --database mydb --user sa --password "YourP@ssword" \
+  --listen-host 0.0.0.0
+
+# Exclude specific tables
+restmssql --database mydb --user sa --password "YourP@ssword" \
+  --exclude-tables AuditLog,TempData
+
+# Custom pagination
+restmssql --database mydb --user sa --password "YourP@ssword" \
+  --default-page-size 50 --max-page-size 500
+
+# Debug logging
+restmssql --database mydb --user sa --password "YourP@ssword" --log-level debug
+```
+
 ## Features
 
 - **Auto-generated endpoints** for all tables, views, and stored procedures
