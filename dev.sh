@@ -24,4 +24,5 @@ npx tsx src/index.ts \
   --trust-server-certificate \
   --no-readonly \
   --schemas dbo,sales,hr,inventory,finance,content \
-  --server-port 3000
+  --server-port 3000 \
+  --listen-host 0.0.0.0

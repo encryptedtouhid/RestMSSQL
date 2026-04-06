@@ -25,10 +25,12 @@ export function parseCliArgs(argv?: string[]): Partial<AppConfig> {
     .option('--no-encrypt', 'Disable connection encryption')
     .option('--trust-server-certificate', 'Trust server certificate')
     .option('--server-port <port>', 'HTTP server port', parseInt)
+    .option('--listen-host <host>', 'Listen host (default: 127.0.0.1)')
     .option('--readonly', 'Read-only mode (default)')
     .option('--no-readonly', 'Enable write operations')
     .option('--cors', 'Enable CORS (default)')
     .option('--no-cors', 'Disable CORS')
+    .option('--cors-origin <origin>', 'CORS allowed origin (default: *)')
     .option('--schemas <schemas>', 'Comma-separated list of schemas to expose')
     .option('--exclude-tables <tables>', 'Comma-separated list of tables to exclude')
     .option('--default-page-size <size>', 'Default page size', parseInt)
@@ -53,8 +55,10 @@ export function parseCliArgs(argv?: string[]): Partial<AppConfig> {
   if (opts['encrypt'] !== undefined) config.encrypt = opts['encrypt'];
   if (opts['trustServerCertificate']) config.trustServerCertificate = true;
   if (opts['serverPort'] !== undefined) config.serverPort = opts['serverPort'];
+  if (opts['listenHost'] !== undefined) config.listenHost = opts['listenHost'];
   if (opts['readonly'] !== undefined) config.readonly = opts['readonly'];
   if (opts['cors'] !== undefined) config.cors = opts['cors'];
+  if (opts['corsOrigin'] !== undefined) config.corsOrigin = opts['corsOrigin'];
   if (opts['schemas']) config.schemas = opts['schemas'].split(',').map((s: string) => s.trim());
   if (opts['excludeTables'])
     config.excludeTables = opts['excludeTables'].split(',').map((s: string) => s.trim());

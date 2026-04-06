@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import type { AppConfig } from './config.js';
@@ -26,9 +27,15 @@ export async function createServer(config: AppConfig) {
     done();
   });
 
+  // Rate limiting
+  await app.register(rateLimit, {
+    max: 100,
+    timeWindow: '1 minute',
+  });
+
   // CORS
   if (config.cors) {
-    await app.register(cors, { origin: true });
+    await app.register(cors, { origin: config.corsOrigin === '*' ? true : config.corsOrigin });
   }
 
   // Swagger
