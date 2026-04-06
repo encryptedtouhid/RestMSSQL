@@ -1,14 +1,15 @@
 # mssql-rest-api
 
+[![CI](https://github.com/encryptedtouhid/mssql-rest-api/actions/workflows/ci.yml/badge.svg)](https://github.com/encryptedtouhid/mssql-rest-api/actions/workflows/ci.yml)
+
 Zero-code REST API server for SQL Server. Point it at a database — it introspects the schema and generates a full OData-compatible REST API automatically. No code required.
 
 ## Quick Start
 
 ```bash
-# Install dependencies
 npm install
 
-# Start with a SQL Server connection
+# Using individual flags
 npx tsx src/index.ts \
   --host localhost \
   --database mydb \
@@ -16,7 +17,12 @@ npx tsx src/index.ts \
   --password "YourP@ssword" \
   --trust-server-certificate
 
-# Server running at http://localhost:3000
+# Or using a connection string
+npx tsx src/index.ts \
+  --connection "Server=localhost;Database=mydb;User Id=sa;Password=YourP@ssword;TrustServerCertificate=true"
+
+# API:     http://localhost:3000/api
+# Swagger: http://localhost:3000/swagger
 ```
 
 ## Features
@@ -24,12 +30,12 @@ npx tsx src/index.ts \
 - **Auto-generated endpoints** for all tables, views, and stored procedures
 - **OData query support** — `$filter`, `$select`, `$orderby`, `$top`, `$skip`, `$expand`, `$count`
 - **JSON and XML** responses via `Accept` header
+- **Swagger UI** at `/swagger` with auto-generated OpenAPI spec
 - **Read-only by default** — enable writes with `--no-readonly`
-- **OData $metadata** endpoint (CSDL XML)
-- **OpenAPI/Swagger** spec auto-generated at `/api/openapi.json`
 - **Multi-schema support** — expose specific schemas with `--schemas dbo,sales`
+- **Composite primary keys** — `GET /api/Table/Key1=val1,Key2=val2`
 - **Stored procedure** execution via `POST /rpc/<name>`
-- **Relationship expansion** — auto-detects foreign keys for `$expand`
+- **Relationship expansion** — auto-detects foreign keys for `$expand` with nested query options
 
 ## API Endpoints
 
@@ -45,6 +51,7 @@ npx tsx src/index.ts \
 | `POST`   | `/rpc/<Procedure>`  | Execute stored procedure               |
 | `GET`    | `/api/$metadata`    | OData CSDL metadata (XML)              |
 | `GET`    | `/api/openapi.json` | OpenAPI 3.0 spec                       |
+| `GET`    | `/swagger`          | Swagger UI                             |
 
 Non-dbo schemas use dotted names: `/api/sales.Orders`
 
@@ -60,8 +67,9 @@ GET /api/Products?$select=Name,Price
 # Order and paginate
 GET /api/Products?$orderby=Price desc&$top=10&$skip=20
 
-# Include related entities
-GET /api/Products?$expand=Category
+# Expand related entities (with nested options)
+GET /api/Products?$expand=Categories($select=Name)
+GET /api/Orders?$expand=OrderItems($top=5;$orderby=UnitPrice desc)
 
 # Count
 GET /api/Products?$count=true
@@ -76,25 +84,26 @@ GET /api/Products?$filter=tolower(Name) eq 'laptop'
 # Null checks
 GET /api/Products?$filter=Description eq null
 
+# Composite primary key
+GET /api/StockLevels/WarehouseId=1,ProductId=2
+
 # Stored procedure
 POST /rpc/GetProductsByCategory
 Content-Type: application/json
 {"CategoryId": 1}
-```
 
-## XML Responses
-
-```bash
+# XML response
 curl -H "Accept: application/xml" http://localhost:3000/api/Products
 ```
 
 ## Configuration
 
-Configuration is loaded with precedence: **CLI flags > environment variables > config file > defaults**.
+Precedence: **CLI flags > environment variables > config file > defaults**.
 
 ### CLI Flags
 
 ```
+--connection <string>        Connection string (Server=...;Database=...;User Id=...;Password=...)
 --host <host>                SQL Server host (default: localhost)
 --port <port>                SQL Server port (default: 1433)
 --database <database>        Database name (required)
@@ -114,23 +123,19 @@ Configuration is loaded with precedence: **CLI flags > environment variables > c
 
 ### Environment Variables
 
-All options can be set via `MSSQLREST_` prefixed environment variables:
-
 ```bash
 MSSQLREST_HOST=localhost
-MSSQLREST_PORT=1433
 MSSQLREST_DATABASE=mydb
 MSSQLREST_USER=sa
 MSSQLREST_PASSWORD=secret
 MSSQLREST_SERVER_PORT=3000
 MSSQLREST_READONLY=false
 MSSQLREST_SCHEMAS=dbo,sales
-MSSQLREST_LOG_LEVEL=info
 ```
 
 ### Config File
 
-Create `.mssqlrestrc.json` or `mssqlrest.config.js` in your project root:
+Create `.mssqlrestrc.json` or `mssqlrest.config.js`:
 
 ```json
 {
@@ -145,51 +150,45 @@ Create `.mssqlrestrc.json` or `mssqlrest.config.js` in your project root:
 ## Development
 
 ```bash
-# Install dependencies
-npm install
+# Quick start with Docker SQL Server + API
+./dev.sh
 
-# Start SQL Server for testing
+# Or manually
 npm run docker:up
-
-# Run in dev mode (auto-reload)
 npm run dev -- --database mssqlrest_test --user sa --password "YourStr0ngP@ssword!" --trust-server-certificate --schemas dbo,sales,hr
 
-# Run unit tests
+# Tests
 npm run test:unit
+npm run test:integration    # requires Docker
 
-# Run integration tests (requires Docker SQL Server)
-npm run test:integration
-
-# Lint and type check
+# Lint, format, typecheck
 npm run lint
-npm run typecheck
-
-# Format code
 npm run format
-
-# Build
-npm run build
-
-# Stop Docker
-npm run docker:down
+npm run typecheck
 ```
 
-### Git Hooks
+## Releasing
 
-- **pre-commit**: lint-staged (ESLint + Prettier) + secretlint (prevents secret/key commits)
-- **pre-push**: TypeScript type check + unit tests
+This project uses [Conventional Commits](https://www.conventionalcommits.org/) and automated versioning.
+
+```bash
+npm run release             # auto-detect bump from commits
+git push --follow-tags      # triggers GitHub Release
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for commit format, branching, and development details.
 
 ## Architecture
 
 ```
-Request → Content Negotiation → OData Parser → Query Builder → SQL Server
-                                                                    ↓
-Response ← JSON/XML Formatter ← ────────────────────── Result Set ←┘
+Request -> Content Negotiation -> OData Parser -> Query Builder -> SQL Server
+                                                                       |
+Response <- JSON/XML Formatter <- ----------------------------- Result Set
 ```
 
 **Schema introspection** queries `INFORMATION_SCHEMA` and `sys.*` catalog views on startup to discover tables, views, columns, primary keys, foreign keys, and stored procedures. Routes are dynamically generated from the discovered schema.
 
-**Security**: All user input is parameterized (`@p0`, `@p1`, ...). Identifiers are validated against the introspected schema and bracket-quoted. No string interpolation of user values into SQL.
+**Security**: All user input is parameterized. Identifiers are validated against the introspected schema and bracket-quoted. LIKE wildcards are escaped. Results are always paginated. Security headers are set on all responses.
 
 ## License
 

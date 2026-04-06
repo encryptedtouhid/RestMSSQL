@@ -1,5 +1,9 @@
+import { createRequire } from 'node:module';
 import { Command } from 'commander';
 import type { AppConfig } from './config.js';
+
+const require = createRequire(import.meta.url);
+const pkg = require('../package.json') as { version: string };
 
 export function parseCliArgs(argv?: string[]): Partial<AppConfig> {
   const program = new Command();
@@ -7,7 +11,7 @@ export function parseCliArgs(argv?: string[]): Partial<AppConfig> {
   program
     .name('mssql-rest-api')
     .description('Zero-code REST API server for SQL Server with OData support')
-    .version('0.1.0')
+    .version(pkg.version)
     .option(
       '--connection <string>',
       'Connection string (Server=...;Database=...;User Id=...;Password=...)',
